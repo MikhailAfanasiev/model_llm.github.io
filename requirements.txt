@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+yfinance
+matplotlib
+jinja2
+requests
+langchain
+openai
+xmltodict
