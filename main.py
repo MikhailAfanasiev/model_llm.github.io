@@ -7,7 +7,7 @@ import base64
 from fastapi import FastAPI, Request, WebSocket
 from fastapi.responses import HTMLResponse
 from jinja2 import Template
-from langchain.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 from langchain.schema import HumanMessage
 import re
 
