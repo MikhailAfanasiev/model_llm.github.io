@@ -109,120 +109,72 @@ def chat_with_llama(prompt: str):
 def home():
     template = Template("""
     <html>
-        <head>
-            <title>Чат с ИИ</title>
-            <style>
-                body {
-                    font-family: Arial, sans-serif;
-                    margin: 0;
-                    padding: 0;
-                    display: flex;
-                    flex-direction: column;
-                    height: 100vh;
-                    background-color: #f4f4f4;
+    <head>
+        <title>Чат с ИИ</title>
+        <style>
+            /* Стиль для блока чата */
+            #chat {
+                max-height: 400px;
+                overflow-y: auto;
+                margin-bottom: 10px;
+                padding: 10px;
+                border: 1px solid #ccc;
+                background-color: #f9f9f9;
+                border-radius: 5px;
+            }
+            .user-message {
+                text-align: right;
+                background-color: #d4edda;
+                border-radius: 10px;
+                padding: 5px;
+                margin-bottom: 5px;
+            }
+            .ai-message {
+                text-align: left;
+                background-color: #f0f0f0;
+                border-radius: 10px;
+                padding: 5px;
+                margin-bottom: 5px;
+            }
+        </style>
+    </head>
+    <body>
+        <h2>Введите запрос:</h2>
+        <input type="text" id="query" placeholder="Введите запрос" size="40">
+        <button onclick="sendMessage()">Отправить</button>
+        <div id="chat"></div>
+
+        <script>
+            let ws = new WebSocket("ws://" + location.host + "/ws");
+
+            ws.onmessage = function(event) {
+                let chat = document.getElementById("chat");
+                chat.innerHTML += "<div class='ai-message'>" + event.data + "</div>";
+                chat.scrollTop = chat.scrollHeight;  // Прокрутка вниз
+            };
+
+            // Функция отправки сообщения
+            function sendMessage() {
+                let input = document.getElementById("query");
+                if (input.value.trim()) {
+                    let chat = document.getElementById("chat");
+                    chat.innerHTML += "<div class='user-message'>" + input.value + "</div>";
+                    ws.send(input.value);
+                    input.value = "";  // Очищаем поле ввода
+                    chat.scrollTop = chat.scrollHeight;  // Прокручиваем чат вниз
                 }
+            }
 
-                #chat {
-                    flex: 1;
-                    padding: 10px;
-                    overflow-y: scroll;
-                    display: flex;
-                    flex-direction: column-reverse;
+            // Обработчик клавиши Enter
+            document.getElementById("query").addEventListener("keypress", function(event) {
+                if (event.key === "Enter") {
+                    sendMessage();  // Отправка сообщения при нажатии Enter
                 }
+            });
+        </script>
+    </body>
+</html>
 
-                .message {
-                    margin-bottom: 10px;
-                    max-width: 70%;
-                    padding: 10px;
-                    border-radius: 15px;
-                    font-size: 16px;
-                    line-height: 1.5;
-                    display: inline-block;
-                    word-wrap: break-word;
-                }
-
-                .user {
-        background-color: #e8e8e8;  /* ИИ будет серым */
-        align-self: flex-end;
-    }
-
-    .ai {
-        background-color: #e1f5fe;  /* Пользователь будет голубым */
-        align-self: flex-start;
-    }
-
-                input[type="text"] {
-                    padding: 10px;
-                    border: none;
-                    border-radius: 25px;
-                    width: 80%;
-                    margin: 10px;
-                    font-size: 16px;
-                }
-
-                button {
-                    padding: 10px 20px;
-                    font-size: 16px;
-                    border-radius: 5px;
-                    background-color: #007bff;
-                    color: white;
-                    border: none;
-                    cursor: pointer;
-                }
-
-                button:hover {
-                    background-color: #0056b3;
-                }
-            </style>
-        </head>
-        <body>
-            <h2 style="text-align:center; padding: 20px;">Чат с ИИ</h2>
-            <div id="chat"></div>
-            <div style="text-align: center; margin-bottom: 20px;">
-                <input type="text" id="query" placeholder="Введите запрос" size="40">
-                <button onclick="sendMessage()">Отправить</button>
-            </div>
-            <script>
-    let ws = new WebSocket("ws://" + location.host + "/ws");
-
-    ws.onmessage = function(event) {
-        let chat = document.getElementById("chat");
-        let messageDiv = document.createElement("div");
-        messageDiv.classList.add('message');
-        messageDiv.classList.add('ai');
-
-        messageDiv.innerHTML = event.data;  // Печатаем только текст (не график)
-        chat.prepend(messageDiv);
-        chat.scrollTop = chat.scrollHeight;
-    };
-
-    function sendMessage() {
-        let input = document.getElementById("query");
-        let chat = document.getElementById("chat");
-
-        // Отправляем сообщение пользователя
-        let messageDiv = document.createElement("div");
-        messageDiv.classList.add('message');
-        messageDiv.classList.add('user');
-        messageDiv.innerHTML = input.value;
-        chat.prepend(messageDiv);
-
-        // Отправляем запрос через WebSocket
-        ws.send(input.value);
-        input.value = "";
-    }
-
-    // Добавляем обработку Enter
-    document.getElementById("query").addEventListener("keypress", function(event) {
-        if (event.key === "Enter") {
-            sendMessage();
-        }
-    });
-</script>
-
-
-        </body>
-    </html>
     """)
     return template.render()
 
