@@ -7,7 +7,7 @@ import base64
 from fastapi import FastAPI, Request, WebSocket
 from fastapi.responses import HTMLResponse
 from jinja2 import Template
-from langchain_openai import ChatOpenAI
+from langchain.chat_models import ChatOpenAI
 from langchain.schema import HumanMessage
 import re
 
@@ -54,7 +54,7 @@ llm = ChatOpenAI(
 )
 
 def get_stock_price(company_name: str):
-    """ Получает цену акций. """
+    """ Получает цену акций и строит график. """
     ticker = COMPANY_TICKERS.get(company_name.lower())
 
     if not ticker:
@@ -66,10 +66,22 @@ def get_stock_price(company_name: str):
     if data.empty:
         return None, f"Не удалось найти данные по акции {ticker}."
 
-    # Возвращаем только цену акции
-    return f"Текущая цена {company_name} ({ticker}): {data['Close'].iloc[-1]:.2f} USD", f"Цена акции: {data['Close'].iloc[-1]:.2f} USD"
+    # Построение графика
+    plt.figure(figsize=(10, 5))
+    plt.plot(data.index, data['Close'], marker='o', linestyle='-')
+    plt.xlabel("Дата", fontsize=12)
+    plt.ylabel("Цена (USD)", fontsize=12)
+    plt.title(f"График цены {company_name} ({ticker})")
+    plt.grid()
 
+    # Сохранение графика в base64
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    buf.seek(0)
+    img_base64 = base64.b64encode(buf.read()).decode('utf-8')
+    plt.close()
 
+    return img_base64, f"Текущая цена {company_name} ({ticker}): {data['Close'].iloc[-1]:.2f} USD"
 
 def get_news_summary(query: str):
     """ Получает новости и делает выжимку через LLM. """
@@ -77,13 +89,13 @@ def get_news_summary(query: str):
     response = requests.get(rss_url)
 
     if response.status_code != 200:
-        return "Ошибка при получении новостей.", "", ""  # Возвращаем пустые строки, если ошибка
+        return "Ошибка при получении новостей."
 
     root = ET.fromstring(response.content)
     items = root.findall(".//item")
 
     if not items:
-        return "Не найдено новостей по данной теме.", "", ""  # Возвращаем пустые строки, если новостей нет
+        return "Не найдено новостей по данной теме."
 
     news_texts = []
     for item in items[:3]:
@@ -95,7 +107,7 @@ def get_news_summary(query: str):
     summary_prompt = f"Создай краткую сводку по этим новостям: {' '.join(news_texts)}"
     summary = chat_with_llama(summary_prompt)
 
-    return "Новости по теме:", news_texts, summary  # Возвращаем три значения
+    return f"Новости по теме {query}:", news_texts, summary
 
 def chat_with_llama(prompt: str):
     """ Общение с LLaMA 3 через LangChain. """
@@ -109,76 +121,30 @@ def chat_with_llama(prompt: str):
 def home():
     template = Template("""
     <html>
-    <head>
-        <title>Чат с ИИ</title>
-        <style>
-            /* Стиль для блока чата */
-            #chat {
-                max-height: 400px;
-                overflow-y: auto;
-                margin-bottom: 10px;
-                padding: 10px;
-                border: 1px solid #ccc;
-                background-color: #f9f9f9;
-                border-radius: 5px;
-            }
-            .user-message {
-                text-align: right;
-                background-color: #d4edda;
-                border-radius: 10px;
-                padding: 5px;
-                margin-bottom: 5px;
-            }
-            .ai-message {
-                text-align: left;
-                background-color: #f0f0f0;
-                border-radius: 10px;
-                padding: 5px;
-                margin-bottom: 5px;
-            }
-        </style>
-    </head>
-    <body>
-        <h2>Введите запрос:</h2>
-        <input type="text" id="query" placeholder="Введите запрос" size="40">
-        <button onclick="sendMessage()">Отправить</button>
-        <div id="chat"></div>
-
-        <script>
-            let ws = new WebSocket("ws://" + location.host + "/ws");
-
-            ws.onmessage = function(event) {
-                let chat = document.getElementById("chat");
-                chat.innerHTML += "<div class='ai-message'>" + event.data + "</div>";
-                chat.scrollTop = chat.scrollHeight;  // Прокрутка вниз
-            };
-
-            // Функция отправки сообщения
-            function sendMessage() {
-                let input = document.getElementById("query");
-                if (input.value.trim()) {
+        <head>
+            <title>Чат с ИИ</title>
+        </head>
+        <body>
+            <h2>Введите запрос:</h2>
+            <input type="text" id="query" placeholder="Введите запрос" size="40">
+            <button onclick="sendMessage()">Отправить</button>
+            <div id="chat"></div>
+            <script>
+                let ws = new WebSocket("ws://" + location.host + "/ws");
+                ws.onmessage = function(event) {
                     let chat = document.getElementById("chat");
-                    chat.innerHTML += "<div class='user-message'>" + input.value + "</div>";
+                    chat.innerHTML += "<p>" + event.data + "</p>";
+                };
+                function sendMessage() {
+                    let input = document.getElementById("query");
                     ws.send(input.value);
-                    input.value = "";  // Очищаем поле ввода
-                    chat.scrollTop = chat.scrollHeight;  // Прокручиваем чат вниз
+                    input.value = "";
                 }
-            }
-
-            // Обработчик клавиши Enter
-            document.getElementById("query").addEventListener("keypress", function(event) {
-                if (event.key === "Enter") {
-                    sendMessage();  // Отправка сообщения при нажатии Enter
-                }
-            });
-        </script>
-    </body>
-</html>
-
+            </script>
+        </body>
+    </html>
     """)
     return template.render()
-
-
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -187,20 +153,15 @@ async def websocket_endpoint(websocket: WebSocket):
         query = await websocket.receive_text()
         if re.search(r"как обстоят дела с\s+(.+)", query, re.IGNORECASE):
             company_name = re.search(r"как обстоят дела с\s+(.+)", query, re.IGNORECASE).group(1)
-            _, price_message = get_stock_price(company_name)  # Получаем только сообщение с ценой
-            _, _, summary = get_news_summary(company_name)  # Получаем только выжимку новостей
-
-            # Формируем ответ с ценой и выжимкой новостей
-            response_message = f"Цена акции: {price_message}<br>Выжимка: {summary}"
-            await websocket.send_text(response_message)
+            img_base64, message = get_stock_price(company_name)
+            title, articles, summary = get_news_summary(company_name)
+            await websocket.send_text(f"{message}\nНовости: {title}\n{articles}\nВыжимка: {summary}")
         else:
-            ai_response = chat_with_llama(query)  # Ответ ИИ на другие запросы
+            ai_response = chat_with_llama(query)
             await websocket.send_text(ai_response)
-
-
-
-
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080)
+
+надо сделать так, чтоб график отображался и был немного другой формат чата, что-то по типу в мессенджерах
